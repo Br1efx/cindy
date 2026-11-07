@@ -439,7 +439,10 @@ async function prepareOnDemand(absPath: string, deps: HtmlPreviewDeps,
       } catch (error) {
         const aborted = closed || controller.signal.aborted;
         const message = error instanceof Error ? error.message : '';
-        const status = /NOT_FOUND|ENOENT/.test(message) ? 404 : 502;
+        // #8805: 被控端对「文件不在本机」回 [MEDIA_SOURCE_MISSING](见 desktop
+        // device-link/mediaFetch.ts),此前只认 NOT_FOUND/ENOENT,于是页面自动请求的
+        // favicon.ico 这类不存在的伴随资源被报成 502。缺失就是缺失,回 404。
+        const status = /NOT_FOUND|ENOENT|MEDIA_SOURCE_MISSING/.test(message) ? 404 : 502;
         mobileDebugLog(aborted ? 'debug' : 'warn', 'files', 'html resource failed', {
           request, ext, route, bytes,
           status: aborted ? 'aborted' : status,

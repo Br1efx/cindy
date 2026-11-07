@@ -19,6 +19,14 @@ const MIME_BY_EXT: Record<string, string> = {
   pdf: 'application/pdf',
   txt: 'text/plain',
   json: 'application/json',
+  // #8805: 网页预览的入口文件与同目录伴随资源走同一条 media:fetch 通道,
+  // 缺这几个映射时 prepare 阶段把 .html 报成 application/octet-stream,
+  // 下游拿不到 text/html 就不再按网页分流。
+  html: 'text/html',
+  htm: 'text/html',
+  css: 'text/css',
+  js: 'text/javascript',
+  mjs: 'text/javascript',
 };
 
 /** Bare lowercase extension; an authoritative MIME from the resolver takes precedence. */

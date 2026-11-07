@@ -1027,6 +1027,15 @@ describe('__testing.extOf / mimeOf', () => {
     expect(__testing.mimeOf('png')).toBe('image/png');
     expect(__testing.mimeOf('xyz')).toBe('application/octet-stream');
   });
+  // #8805: 网页预览的入口与伴随资源走同一条 media:fetch 通道;缺映射时
+  // prepare 阶段把 .html 报成 application/octet-stream,下游无法按网页分流。
+  it('mimeOf:网页文本类型有明确 MIME,不再回落 octet-stream', () => {
+    expect(__testing.mimeOf('html')).toBe('text/html');
+    expect(__testing.mimeOf('htm')).toBe('text/html');
+    expect(__testing.mimeOf('css')).toBe('text/css');
+    expect(__testing.mimeOf('js')).toBe('text/javascript');
+    expect(__testing.mimeOf('mjs')).toBe('text/javascript');
+  });
 });
 
 describe('integrity regression coverage', () => {

@@ -637,6 +637,18 @@ describe("on-demand mobile HTML previews", () => {
     await preview.close();
   });
 
+  // #8805: 被控端对「文件不在本机」回 [MEDIA_SOURCE_MISSING](desktop
+  // device-link/mediaFetch.ts)。此前只认 NOT_FOUND/ENOENT,页面自动请求的
+  // favicon.ico 这类不存在的伴随资源被报成 502(网关错误),这里锁死 404。
+  it("reports a missing companion resource on the Host as 404, not 502", async () => {
+    const { deps } = setup();
+    const preview = await prepareMobileHtmlPreview("/site/index.html", deps, new AbortController().signal);
+    mocks.remote.mockRejectedValueOnce(new Error("[MEDIA_SOURCE_MISSING] Media source is missing on this Host"));
+    request("favicon", "favicon.ico");
+    await vi.waitFor(() => expect(mocks.resolveRequest).toHaveBeenCalledWith(token, "favicon", "", "", 404));
+    await preview.close();
+  });
+
   it("cancels closed requests before publishing and drains cleanup before removing its directory", async () => {
     const { deps } = setup();
     const preview = await prepareMobileHtmlPreview("/site/index.html", deps, new AbortController().signal);
