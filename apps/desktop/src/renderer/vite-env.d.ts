@@ -1955,6 +1955,10 @@ interface ElectronAPI {
     closeDictionaryToast: () => Promise<{ ok: true }>;
   };
 
+  deepLink: {
+    repair: () => Promise<import('../shared/deepLinkRepair').DeepLinkRepairResult>;
+  };
+
   windowBehavior: {
     getLoginItem: () => Promise<import('../shared/loginItem').LoginItemState>;
     setLoginItem: (enabled: boolean) => Promise<import('../shared/loginItem').LoginItemState>;

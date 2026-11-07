@@ -42,6 +42,10 @@ import {
   LOGIN_ITEM_SET_CHANNEL,
   type LoginItemState,
 } from '../shared/loginItem';
+import {
+  DEEP_LINK_REPAIR_CHANNEL,
+  type DeepLinkRepairResult,
+} from '../shared/deepLinkRepair';
 import type { BotToolsetContext } from '../shared/botRemoteCapabilities';
 import {
   STARTUP_GATE_STALL_CHANNEL,
@@ -2072,6 +2076,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('voice-input:dictionary-toast-show', payload),
     closeDictionaryToast: (): Promise<{ ok: true }> =>
       ipcRenderer.invoke('voice-input:dictionary-toast-close'),
+  },
+
+  // 深链协议关联修复（#300）：写入注册表的动作只由用户显式点击触发。
+  deepLink: {
+    repair: (): Promise<DeepLinkRepairResult> => ipcRenderer.invoke(DEEP_LINK_REPAIR_CHANNEL),
   },
 
   windowBehavior: {

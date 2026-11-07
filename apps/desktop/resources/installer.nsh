@@ -9,6 +9,7 @@
 ; 行为零变化。
 !include "${BUILD_RESOURCES_DIR}\winget-shortcuts.nsh"
 !include "${BUILD_RESOURCES_DIR}\installer-directory.nsh"
+!include "${BUILD_RESOURCES_DIR}\installer-deeplink-schemes.nsh"
 
 !ifndef BUILD_UNINSTALLER
 !macro customInit
@@ -82,6 +83,30 @@
   WriteRegStr HKCU "Software\Classes\SystemFileAssociations\.xdtshare\shell\${PRODUCT_FILENAME}" "Icon" "$INSTDIR\${APP_EXECUTABLE_FILENAME},0"
   WriteRegStr HKCU "Software\Classes\SystemFileAssociations\.xdtshare\shell\${PRODUCT_FILENAME}\command" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --open-share-file "%1"'
 
+  ; 注册自定义 URL scheme(深链 cindy:// + 历史 xdt-maker://)。
+  ;
+  ; 为什么放在安装器而不是 app 启动时:app 每次启动都调 setAsDefaultProtocolClient
+  ; 会重写 HKCU\Software\Classes\<scheme>\shell\open\command,安全软件
+  ; (360 注册表防护)会弹「有程序正在修改文件关联」,用户点「阻止」后深链就
+  ; 唤不起当前版本;并存的多份安装还会反复互抢 handler。见 #300。
+  ;
+  ; 键形态与 Electron 的 setAsDefaultProtocolClient 一致(否则 Electron 的
+  ; isDefaultProtocolClient 读不到,启动时的只读核对会误判):
+  ;   Software\Classes\<scheme>
+  ;     (Default)    = "URL:<scheme>"     ; scheme 的 URL 声明
+  ;     URL Protocol = ""                 ; Windows 认它是 Internet scheme 的标志
+  ;     shell\open\command
+  ;       (Default) = "<exe>" "%1"       ; 整体加引号,路径含空格也能解析
+  ;
+  ; 用 HKCU 不用 HKLM:与同文件里的右键菜单一致(无需管理员权限,每用户各写各的)。
+  ; HKCU\Software\Classes 被 HKEY_CLASSES_ROOT 继承,系统按 URL scheme 查找时一样命中。
+  ;
+  ; scheme 列表与运行时同源(shared/deepLinkSchemes.ts 的 DEEP_LINK_SCHEMES:
+  ; 主 'cindy' + 历史 'xdt-maker'),此处写死字面量——NSIS 侧没有共享常量通道,
+  ; 改 scheme 必须同时改这里(DEEP_LINK_SCHEMES 的注释已标注这层耦合)。
+  !insertmacro cindyRegisterDeepLinkScheme "cindy"
+  !insertmacro cindyRegisterDeepLinkScheme "xdt-maker"
+
   ; 广播 SHCNE_ASSOCCHANGED 让 Explorer 失效图标缓存，新图标无需注销/重启就能生效
   ; 0x08000000 = SHCNE_ASSOCCHANGED, 0 = SHCNF_IDLIST
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
@@ -120,6 +145,9 @@
   DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\${PRODUCT_FILENAME}"
   DeleteRegKey HKCU "Software\Classes\SystemFileAssociations\.cshare\shell\${PRODUCT_FILENAME}"
   DeleteRegKey HKCU "Software\Classes\SystemFileAssociations\.xdtshare\shell\${PRODUCT_FILENAME}"
+  ; 深链 scheme:只删仍指向本安装目录的 handler,并存安装 / 用户自装的 handler 不碰。
+  !insertmacro cindyRemoveDeepLinkScheme "cindy"
+  !insertmacro cindyRemoveDeepLinkScheme "xdt-maker"
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
 !macroend
 

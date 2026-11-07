@@ -159,6 +159,10 @@ const mobileGuardInclude = [
 // for a new source scan to silently become part of the ordinary unit gate.
 const desktopGuardInclude = [
   'src/renderer/components/settings/__tests__/settingsSearchCatalog.guard.test.ts',
+  // Windows deep-link protocol registration spans the NSIS installer resources
+  // and the main-process startup entry, so the contract is only observable as
+  // source text (#300).
+  'scripts/nsis-deeplink-schemes.test.mjs',
   // Cross-file host/engine prompt ownership and remote-authorization isolation.
   'src/main/plugin-oauth/__tests__/runtimePrompt.test.ts',
   // Cross-hook voice stop/refine ownership and composer hydration race wiring.

@@ -3565,6 +3565,26 @@
       },
       "checkCase": false,
       "note": "官方飞书 / Lark 机器人中接收新消息的已关联电脑；每个应用和飞书账号独立选择，默认最新关联的电脑。"
+    },
+    {
+      "id": "deep-link",
+      "status": "proposed",
+      "en": "Deep link",
+      "translations": {
+        "zh-CN": "深链",
+        "zh-TW": "深鏈",
+        "ja": "ディープリンク",
+        "ko": "딥 링크",
+        "fr": "lien profond",
+        "es": "enlace profundo",
+        "de": "Deep-Link",
+        "pt-PT": "ligação profunda",
+        "pt-BR": "link profundo",
+        "zh-Hant-x-lzh": "深鏈",
+        "zh-Hans-x-lzh": "深链"
+      },
+      "checkCase": false,
+      "note": "Cindy 自己的 cindy:// / xdt-maker:// 自定义 URL scheme 链接，唤起应用并跳到指定页面。与「分享链接」(Share Link，供应商分享的一次性链接)、「打开链接」(settings.linkOpen，消息里网页链接的打开位置)是不同的东西，不要混用。"
     }
   ]
 }

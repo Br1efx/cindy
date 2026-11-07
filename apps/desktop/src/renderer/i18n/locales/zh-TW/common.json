@@ -2395,6 +2395,13 @@
           "300": "5 分鐘",
           "system": "跟隨系統"
         }
+      },
+      "deepLinkRepair": {
+        "label": "深鏈關聯",
+        "hint": "cindy:// 這類連結用來喚起 Cindy。若喚不起了，可在此處修復關聯。",
+        "repair": "修復關聯",
+        "repaired": "深鏈關聯已修復。",
+        "repairFailed": "修復關聯失敗，請重試，或重新安裝 Cindy。"
       }
     },
     "agentIsland": {

@@ -2425,6 +2425,13 @@
           "300": "5 min",
           "system": "System"
         }
+      },
+      "deepLinkRepair": {
+        "label": "Deep links",
+        "hint": "Cindy links such as cindy:// open the app. If they stopped working, repair the association here.",
+        "repair": "Repair association",
+        "repaired": "Deep links are working again.",
+        "repairFailed": "Could not repair the association. Try again, or reinstall Cindy."
       }
     },
     "agentIsland": {

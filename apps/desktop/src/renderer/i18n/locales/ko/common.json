@@ -2395,6 +2395,13 @@
           "300": "5분",
           "system": "시스템"
         }
+      },
+      "deepLinkRepair": {
+        "label": "딥 링크 연결",
+        "hint": "cindy:// 같은 링크로 Cindy를 엽니다. 열리지 않으면 여기에서 연결을 복구할 수 있습니다.",
+        "repair": "연결 복구",
+        "repaired": "딥 링크 연결을 복구했습니다.",
+        "repairFailed": "연결을 복구하지 못했습니다. 다시 시도하거나 Cindy를 다시 설치하세요."
       }
     },
     "agentIsland": {

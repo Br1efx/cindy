@@ -2425,6 +2425,13 @@
           "300": "5 Min.",
           "system": "System"
         }
+      },
+      "deepLinkRepair": {
+        "label": "Deep-Links",
+        "hint": "Links wie cindy:// öffnen Cindy. Wenn sie nicht mehr funktionieren, repariere die Zuordnung hier.",
+        "repair": "Zuordnung reparieren",
+        "repaired": "Deep-Links funktionieren wieder.",
+        "repairFailed": "Die Zuordnung konnte nicht repariert werden. Versuche es erneut oder installiere Cindy neu."
       }
     },
     "agentIsland": {

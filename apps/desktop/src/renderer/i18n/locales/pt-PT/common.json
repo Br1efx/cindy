@@ -2463,6 +2463,13 @@
           "300": "5 min",
           "system": "Sistema"
         }
+      },
+      "deepLinkRepair": {
+        "label": "Ligações profundas",
+        "hint": "Ligações como cindy:// abrem o Cindy. Se deixarem de funcionar, repara a associação aqui.",
+        "repair": "Reparar associação",
+        "repaired": "As ligações profundas voltaram a funcionar.",
+        "repairFailed": "Não foi possível reparar a associação. Tente novamente ou reinstale o Cindy."
       }
     },
     "agentIsland": {

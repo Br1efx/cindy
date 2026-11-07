@@ -14,7 +14,12 @@ import { DEEP_LINK_SCHEMES } from '../../shared/deepLinkSchemes';
 // vitest 跑测试时不会真的初始化 Electron app, 单 import 需要 mock electron。
 // 聚焦策略测试通过这些替身观察是否产生窗口激活副作用。
 vi.mock('electron', () => ({
-  app: { get isPackaged() { return false; }, focus: vi.fn(), setAsDefaultProtocolClient: vi.fn() },
+  app: {
+    get isPackaged() { return false; },
+    focus: vi.fn(),
+    setAsDefaultProtocolClient: vi.fn(),
+    isDefaultProtocolClient: vi.fn(),
+  },
   BrowserWindow: { getFocusedWindow: vi.fn(() => null) },
 }));
 vi.mock('../deepLinkWindowsRegistration', () => ({ registerWindowsDeepLinkName: vi.fn() }));
@@ -52,18 +57,25 @@ import {
   takePendingDeepLink,
   takePendingDeepLinkFromRenderer,
   registerDeepLinkProtocol,
+  repairDeepLinkProtocol,
 } from '../deepLink';
 
 describe('OS deep-link registration', () => {
   const defaultAppDescriptor = Object.getOwnPropertyDescriptor(process, 'defaultApp');
+  const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+  function stubPlatform(value: NodeJS.Platform): void {
+    Object.defineProperty(process, 'platform', { value, configurable: true });
+  }
   beforeEach(() => {
     vi.mocked(app.setAsDefaultProtocolClient).mockReset();
+    vi.mocked(app.isDefaultProtocolClient).mockReset();
     vi.mocked(registerWindowsDeepLinkName).mockReset();
   });
   afterEach(() => {
     vi.restoreAllMocks();
     if (defaultAppDescriptor) Object.defineProperty(process, 'defaultApp', defaultAppDescriptor);
     else Reflect.deleteProperty(process, 'defaultApp');
+    if (platformDescriptor) Object.defineProperty(process, 'platform', platformDescriptor);
   });
 
   // Regression: starting an unpackaged checkout replaced the installed client's OS
@@ -84,24 +96,110 @@ describe('OS deep-link registration', () => {
     expect(registerWindowsDeepLinkName).not.toHaveBeenCalled();
   });
 
-  it('registers every supported scheme for packaged clients without a dev launch command', () => {
+  // Regression (#300): every packaged startup rewrote the Windows handler, which
+  // security software intercepts as "a program is modifying file associations".
+  // The installer owns the association now; startup may only read it.
+  it('never rewrites the Windows handler on startup', () => {
+    stubPlatform('win32');
     vi.spyOn(app, 'isPackaged', 'get').mockReturnValue(true);
-    vi.mocked(app.setAsDefaultProtocolClient).mockReturnValue(true);
+    vi.mocked(app.isDefaultProtocolClient).mockReturnValue(true);
 
     registerDeepLinkProtocol();
 
+    expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
+    expect(vi.mocked(app.isDefaultProtocolClient).mock.calls).toEqual(DEEP_LINK_SCHEMES.map(scheme => [scheme]));
+  });
+
+  it('labels a scheme whose Windows association already points at this build', () => {
+    stubPlatform('win32');
+    vi.spyOn(app, 'isPackaged', 'get').mockReturnValue(true);
+    vi.mocked(app.isDefaultProtocolClient).mockReturnValue(true);
+
+    registerDeepLinkProtocol();
+
+    expect(vi.mocked(registerWindowsDeepLinkName).mock.calls).toEqual(DEEP_LINK_SCHEMES.map(scheme => [scheme]));
+  });
+
+  it('does not take over a Windows association owned by another install', () => {
+    stubPlatform('win32');
+    vi.spyOn(app, 'isPackaged', 'get').mockReturnValue(true);
+    vi.mocked(app.isDefaultProtocolClient).mockReturnValue(false);
+
+    registerDeepLinkProtocol();
+
+    expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
+    expect(registerWindowsDeepLinkName).not.toHaveBeenCalled();
+    expect(logs.warn).toHaveBeenCalledWith(
+      'deep link scheme is not registered to this build',
+      { scheme: DEEP_LINK_SCHEMES[0] },
+    );
+  });
+
+  // macOS / Linux register through the OS itself; the runtime call stays in place.
+  it('keeps registering the scheme through the OS on macOS and Linux', () => {
+    for (const platform of ['darwin', 'linux'] as NodeJS.Platform[]) {
+      vi.mocked(app.setAsDefaultProtocolClient).mockClear();
+      vi.mocked(registerWindowsDeepLinkName).mockClear();
+      stubPlatform(platform);
+      vi.spyOn(app, 'isPackaged', 'get').mockReturnValue(true);
+      vi.mocked(app.setAsDefaultProtocolClient).mockReturnValue(true);
+
+      registerDeepLinkProtocol();
+
+      expect(vi.mocked(app.setAsDefaultProtocolClient).mock.calls).toEqual(DEEP_LINK_SCHEMES.map(scheme => [scheme]));
+      expect(vi.mocked(registerWindowsDeepLinkName).mock.calls).toEqual(DEEP_LINK_SCHEMES.map(scheme => [scheme]));
+    }
+  });
+});
+
+// Regression (#300): the association may only be restored when the user asks
+// for it. The repair entry is the one place that still writes the handler.
+describe('user-triggered deep link repair', () => {
+  const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+  function stubPlatform(value: NodeJS.Platform): void {
+    Object.defineProperty(process, 'platform', { value, configurable: true });
+  }
+  beforeEach(() => {
+    vi.mocked(app.setAsDefaultProtocolClient).mockReset();
+    vi.mocked(app.isDefaultProtocolClient).mockReset();
+    vi.mocked(registerWindowsDeepLinkName).mockReset();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (platformDescriptor) Object.defineProperty(process, 'platform', platformDescriptor);
+  });
+
+  it('writes the association for every scheme when the user asks for it', async () => {
+    stubPlatform('win32');
+    vi.spyOn(app, 'isPackaged', 'get').mockReturnValue(true);
+    vi.mocked(app.setAsDefaultProtocolClient).mockReturnValue(true);
+
+    await expect(repairDeepLinkProtocol()).resolves.toEqual(
+      Object.fromEntries(DEEP_LINK_SCHEMES.map(scheme => [scheme, true])),
+    );
     expect(vi.mocked(app.setAsDefaultProtocolClient).mock.calls).toEqual(DEEP_LINK_SCHEMES.map(scheme => [scheme]));
     expect(vi.mocked(registerWindowsDeepLinkName).mock.calls).toEqual(DEEP_LINK_SCHEMES.map(scheme => [scheme]));
   });
 
-  it('does not write a Windows display name for a scheme whose registration failed', () => {
+  it('reports an unrepaired scheme instead of throwing', async () => {
+    stubPlatform('win32');
     vi.spyOn(app, 'isPackaged', 'get').mockReturnValue(true);
     vi.mocked(app.setAsDefaultProtocolClient).mockImplementation(scheme => scheme !== DEEP_LINK_SCHEMES[0]);
 
-    registerDeepLinkProtocol();
+    const result = await repairDeepLinkProtocol();
 
-    expect(vi.mocked(app.setAsDefaultProtocolClient).mock.calls).toEqual(DEEP_LINK_SCHEMES.map(scheme => [scheme]));
-    expect(vi.mocked(registerWindowsDeepLinkName).mock.calls).toEqual(DEEP_LINK_SCHEMES.slice(1).map(scheme => [scheme]));
+    expect(result[DEEP_LINK_SCHEMES[0]]).toBe(false);
+    expect(result[DEEP_LINK_SCHEMES[1]]).toBe(true);
+  });
+
+  it('never writes the association outside a packaged build', async () => {
+    stubPlatform('win32');
+    vi.spyOn(app, 'isPackaged', 'get').mockReturnValue(false);
+
+    const result = await repairDeepLinkProtocol();
+
+    expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
+    expect(Object.values(result).every((value) => value === false)).toBe(true);
   });
 });
 

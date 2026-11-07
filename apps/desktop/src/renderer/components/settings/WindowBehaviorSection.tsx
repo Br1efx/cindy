@@ -37,6 +37,7 @@ import { useSwallowActivationClickSettings } from '@/hooks/useSwallowActivationC
 import { useKeepAwakeSetting } from '@/hooks/useKeepAwakeSetting';
 import { useAwayGuardSetting } from '@/hooks/useAwayGuardSetting';
 import { useLoginItemSetting } from '@/hooks/useLoginItemSetting';
+import { useDeepLinkRepairSetting } from '@/hooks/useDeepLinkRepairSetting';
 import { useMenubarSetting } from '@/hooks/useMenubarSetting';
 import { isAwayGuardDelaySeconds } from '../../../shared/awayGuard';
 import {
@@ -96,6 +97,7 @@ export function WindowBehaviorSection() {
   const { enabled, setEnabled } = useSwallowActivationClickSettings();
   const { keepAwake, setKeepAwake } = useKeepAwakeSetting();
   const loginItem = useLoginItemSetting();
+  const deepLinkRepair = useDeepLinkRepairSetting();
   const menubar = useMenubarSetting();
   const awayGuard = useAwayGuardSetting();
   const { t } = useTranslation();
@@ -273,6 +275,49 @@ export function WindowBehaviorSection() {
             </div>
           }
         />
+      ),
+    });
+  }
+
+  if (deepLinkRepair.supported) {
+    rows.push({
+      key: 'deep-link-repair',
+      node: (
+        <div className={SETTINGS_ROW_CLASS}>
+          <div className="flex min-w-0 flex-col gap-1">
+            <p id={windowBehaviorSettings.deepLinkRepair.targetId}
+              className={SETTINGS_ROW_LABEL_CLASS}
+              style={{ letterSpacing: '0.12px' }}
+            >
+              {t(windowBehaviorSettings.deepLinkRepair.titleKey)}
+            </p>
+            <p className={SETTINGS_ROW_HINT_CLASS}>
+              {t(windowBehaviorSettings.deepLinkRepair.descriptionKey)}
+            </p>
+            {deepLinkRepair.error ? (
+              <p className={SETTINGS_ROW_HINT_CLASS} role="alert">
+                {t('settings.windowBehavior.deepLinkRepair.repairFailed')}
+              </p>
+            ) : deepLinkRepair.repaired ? (
+              <p className={SETTINGS_ROW_HINT_CLASS} role="status">
+                {t('settings.windowBehavior.deepLinkRepair.repaired')}
+              </p>
+            ) : null}
+          </div>
+          <Button
+            data-settings-search-action="Repairs the deep link protocol association the user explicitly asked to restore"
+            variant="secondary"
+            size="md"
+            compact
+            type="button"
+            loading={deepLinkRepair.busy}
+            disabled={deepLinkRepair.busy}
+            onClick={() => void deepLinkRepair.repair()}
+            className="shrink-0"
+          >
+            {t('settings.windowBehavior.deepLinkRepair.repair')}
+          </Button>
+        </div>
       ),
     });
   }

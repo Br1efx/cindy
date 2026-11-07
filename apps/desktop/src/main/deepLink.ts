@@ -710,17 +710,83 @@ function isWindowsSlashSwitch(value: string): boolean {
 }
 
 /**
- * 仅为 packaged client 注册主 + 历史 scheme。未打包实例即使没有 process.defaultApp
- * 也不能接管系统关联；退出时 removeAsDefaultProtocolClient 不保证恢复原处理程序。
- * Windows/Linux 运行时写注册表 / .desktop；macOS 还需要打包时声明 CFBundleURLTypes。
+ * 启动时注册主 + 历史 scheme 的深链关联。
+ *
+ * Windows（#300）：**只读**核对关联状态，不再写系统关联。
+ * 旧实现在每次启动都调 `setAsDefaultProtocolClient`，把
+ * `HKCU\Software\Classes\<scheme>\shell\open\command` 重写成当前 exe 路径。
+ * 这等于「每次启动修改文件关联」：安全软件（360 注册表防护）会弹
+ * 「有程序正在修改文件关联」，用户点「阻止」后深链就唤不起当前版本；而且并存的
+ * 多份安装（cn/global、测试包目录）会反复互抢 handler。
+ *
+ * 现在 Windows 的协议注册由安装器一次性完成（resources/installer.nsh 的
+ * customInstall 写 `URL Protocol` + `shell\open\command`），运行时只做只读检查：
+ *   - 已由本安装注册 → 不动关联，只补一次展示名（registerWindowsDeepLinkName
+ *     先查后写，值一致就跳过）；
+ *   - 未注册 / 被别的安装接管 → **不抢**，只在日志里记一笔，等用户主动修复。
+ *
+ * macOS / Linux 保持旧行为：关联本身由系统（LaunchServices / .desktop）登记，
+ * 运行时调用仍是无副作用的一次确认。
+ *
+ * 未打包实例即使没有 process.defaultApp 也不能接管系统关联；退出时
+ * removeAsDefaultProtocolClient 不保证恢复原处理程序。
  *
  * 由 bootstrap-electron 启动时调用。open-url listener 另行尽早挂载，以接住冷启动事件。
  */
 export function registerDeepLinkProtocol(): void {
   if (!app.isPackaged) return;
 
-  for (const scheme of DEEP_LINK_SCHEMES) {
-    const registered = app.setAsDefaultProtocolClient(scheme);
-    if (registered) void registerWindowsDeepLinkName(scheme);
+  if (process.platform !== 'win32') {
+    for (const scheme of DEEP_LINK_SCHEMES) {
+      const registered = app.setAsDefaultProtocolClient(scheme);
+      if (registered) void registerWindowsDeepLinkName(scheme);
+    }
+    return;
   }
+
+  for (const scheme of DEEP_LINK_SCHEMES) {
+    if (app.isDefaultProtocolClient(scheme)) {
+      // 关联已指向本程序：只补一次展示名，不碰 shell\open\command（#300）。
+      void registerWindowsDeepLinkName(scheme);
+      continue;
+    }
+    // 关联缺失或被别的安装接管：不在启动路径静默抢回（#300）。
+    log.warn('deep link scheme is not registered to this build', { scheme });
+  }
+}
+
+/**
+ * 用户主动触发的深链关联修复（#300）。
+ *
+ * 关联由安装器一次性写入，运行时**不**在启动路径抢回——否则安全软件
+ * （360 注册表防护）每次启动都会弹「有程序正在修改文件关联」，用户点
+ * 「阻止」后深链就唤不起当前版本。关联真被破坏（用户手动删键、组策略清理、
+ * 卸载后重装等）时，由用户显式点「修复」走这里补回。
+ *
+ * 与启动路径的区别只有一处：这里是**用户明确要求**的一次性写入，不是
+ * 启动副作用。写完仍然只补展示名，handler 本身交给 Electron 的
+ * setAsDefaultProtocolClient——它写的键形态与安装器完全一致。
+ *
+ * 返回每个 scheme 是否修复成功；调用方（设置页）据此提示用户。
+ */
+export async function repairDeepLinkProtocol(): Promise<Record<string, boolean>> {
+  const result: Record<string, boolean> = {};
+  if (!app.isPackaged) {
+    for (const scheme of DEEP_LINK_SCHEMES) result[scheme] = false;
+    return result;
+  }
+
+  for (const scheme of DEEP_LINK_SCHEMES) {
+    try {
+      // setAsDefaultProtocolClient 在 Windows 上写 HKCU\Software\Classes\<scheme>
+      // 的 URL 声明 + shell\open\command；在 macOS / Linux 上交给系统登记。
+      const registered = app.setAsDefaultProtocolClient(scheme);
+      result[scheme] = registered;
+      if (registered) void registerWindowsDeepLinkName(scheme);
+    } catch (error) {
+      result[scheme] = false;
+      log.warn('could not repair deep link scheme registration', { scheme, error });
+    }
+  }
+  return result;
 }

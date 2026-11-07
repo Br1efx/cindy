@@ -2395,6 +2395,13 @@
           "300": "五分",
           "system": "從系統"
         }
+      },
+      "deepLinkRepair": {
+        "label": "深鏈關聯",
+        "hint": "cindy:// 之屬連結，用以喚起 Cindy。若不復喚起，可於此修之。",
+        "repair": "修之關聯",
+        "repaired": "深鏈關聯已修。",
+        "repairFailed": "修關聯不成，請再試，或重裝 Cindy。"
       }
     },
     "agentIsland": {

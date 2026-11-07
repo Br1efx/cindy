@@ -13,6 +13,7 @@ import { registerFilePeerIpc } from './device-link/filePeer';
 import { registerTaskMigrationIpc } from './task-migration/service';
 import { registerSetupMigration } from './setup-migration/register';
 import { registerLoginItemIpc } from './login-item-ipc.js';
+import { registerDeepLinkRepairIpc } from './deep-link-repair-ipc.js';
 import { registerMenubarIpc } from './menubar/ipc.js';
 import { initMenubarService, stopMenubarService } from './menubar/service.js';
 import { refreshQuotaPanelsControlState } from './quota-overview/panelController.js';
@@ -2598,6 +2599,7 @@ registerAppShortcutIpc();
 registerAppearanceSettingsIpc();
 registerAccessibilitySupportIpc();
 registerLoginItemIpc();
+registerDeepLinkRepairIpc();
 registerMenubarIpc();
 registerAwayGuardIpc({
   read: () => {

@@ -50,6 +50,17 @@ export const windowBehaviorSettings = defineSettings({
     descriptionKey: 'settings.windowBehavior.loginItem.hint',
     isVisible: ({ platform }) => platform === 'darwin' || platform === 'win32',
   },
+  deepLinkRepair: {
+    id: 'settings.windowBehavior.deepLinkRepair.label',
+    fallbackTargetId: 'settings-window-behavior',
+    tab: 'general',
+    targetId: 'settings-search-deep-link-repair',
+    titleKey: 'settings.windowBehavior.deepLinkRepair.label',
+    aliases: ['深链', '协议关联', 'deep link', 'url protocol'],
+    sectionKey: 'settings.sections.windowBehavior',
+    descriptionKey: 'settings.windowBehavior.deepLinkRepair.hint',
+    isVisible: ({ platform }) => platform === 'win32',
+  },
   menubarLabel: {
     id: 'settings.windowBehavior.menubar.label',
     fallbackTargetId: 'settings-window-behavior',
