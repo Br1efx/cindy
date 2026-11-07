@@ -8,6 +8,7 @@ import { i18n } from "@/i18n";
 import { tokenizeCode } from "@/session/codeHighlight";
 import {
   mobileMarkdownInlineHasMark,
+  mobileMarkdownUnorderedMarker,
   parseMobileMarkdown,
   type MobileMarkdownBlock,
   type MobileMarkdownInline,
@@ -21,6 +22,9 @@ import type {
   ConversationShareSvgTextBlock,
 } from "@/session/conversationShareSvgLayout";
 import { typeScale, lineHeight, spacing, radius } from "@/theme/tokens";
+
+/** 嵌套列表每级的左边距(与消息流 renderSingleBlock 同一档)。 */
+const LIST_INDENT_PX = 16;
 
 export interface ShareSvgRect {
   x: number;
@@ -273,10 +277,12 @@ export function layoutConversationShareRichBody(
       rectangles.push({ x, y: cursor, width: 2, height, fill: colors.border });
       cursor += height;
     } else if (value.type === "list_item") {
+      // #8603:嵌套层级靠左边距表达,项目符号按层级换(• → ◦ → ▪)。
+      const depth = Math.max(0, value.depth);
       const marker =
         typeof value.checked === "boolean"
           ? `${value.ordered ? `${value.marker} ` : ""}${value.checked ? "☑" : "☐"}`
-          : value.marker;
+          : value.ordered ? value.marker : mobileMarkdownUnorderedMarker(depth);
       const markerUnits = Array.from(marker).reduce(
         (sum, character) => sum + conservativeArialGlyphWidthEm(character),
         0,
@@ -285,15 +291,17 @@ export function layoutConversationShareRichBody(
         spacing.xl,
         markerUnits * typeScale.bodyLarge + spacing.sm,
       );
+      // 嵌套层级靠左边距表达(与消息流同一档)。
+      const indent = depth * LIST_INDENT_PX;
       text(
         [{ text: marker, color: colors.textPrimary }],
-        x,
+        x + indent,
         cursor,
         markerWidth,
       );
       cursor += Math.max(
         lineHeight.body,
-        inlines(value.inlines, x + markerWidth, cursor, width - markerWidth),
+        inlines(value.inlines, x + indent + markerWidth, cursor, width - indent - markerWidth),
       );
     } else {
       const heading = value.type === "heading";

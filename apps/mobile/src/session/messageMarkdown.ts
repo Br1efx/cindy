@@ -62,7 +62,9 @@ export type MobileMarkdownBlock =
   | { type: 'paragraph'; key: string; srcLine?: number; inlines: MobileMarkdownInline[] }
   | { type: 'heading'; key: string; srcLine?: number; level: number; inlines: MobileMarkdownInline[] }
   | { type: 'blockquote'; key: string; srcLine?: number; inlines: MobileMarkdownInline[] }
-  | { type: 'list_item'; key: string; srcLine?: number; ordered: boolean; marker: string; checked?: boolean; inlines: MobileMarkdownInline[] }
+  // 列表嵌套层级:0 = 最外层。行首缩进被解析器折算成层级后透传给渲染层,
+  // 渲染层据此分级缩进与项目符号(此前各层被拍平成同一级,见 #8603)。
+  | { type: 'list_item'; key: string; srcLine?: number; ordered: boolean; marker: string; depth: number; checked?: boolean; inlines: MobileMarkdownInline[] }
   | { type: 'table'; key: string; srcLine?: number; header: MobileMarkdownInline[][]; rows: MobileMarkdownTableRow[] }
   | { type: 'mermaid'; key: string; srcLine?: number; text: string }
   // display LaTeX 公式块($$ 围栏,text 为 LaTeX 源码)。渲染走 WebView KaTeX
@@ -94,6 +96,55 @@ export interface ParseMobileMarkdownOptions {
   sourceIsNormalized?: boolean;
   /** Previous committed parse, used only for immutable paragraph inline prefixes. */
   previous?: MobileMarkdownParseResult;
+  /**
+   * 断点处的列表嵌套层级栈。增量解析续写列表时用它把子项接回父级,
+   * 否则续写的子项会被当成新的最外层(#8603)。
+   */
+  listStack?: number[];
+}
+
+/**
+ * 行首空白 → 列数(tab 记 4 列,与 CommonMark 的 tab 展开一致)。
+ */
+function mobileMarkdownIndentColumns(indent: string): number {
+  let columns = 0;
+  for (const character of indent) {
+    columns += character === '\t' ? 4 : 1;
+  }
+  return columns;
+}
+
+/**
+ * 无序列表按层级的项目符号(第 1 层 •、第 2 层 ◦、第 3 层 ▪,再深循环)。
+ * 与桌面端 list-disc / list-circle / list-square 的层级区分对齐。
+ */
+const MOBILE_MARKDOWN_UNORDERED_MARKERS = ['•', '◦', '▪'] as const;
+
+export function mobileMarkdownUnorderedMarker(depth: number): string {
+  const index = Math.max(0, Math.floor(depth)) % MOBILE_MARKDOWN_UNORDERED_MARKERS.length;
+  return MOBILE_MARKDOWN_UNORDERED_MARKERS[index];
+}
+
+/**
+ * 文本流里一级缩进用几个不换行空格(U+00A0)。普通空格在文本流的
+ * span 边界上宽度不稳定(两端对齐/首尾空白处理都吃它),不换行空格
+ * 稳定占一个字符宽。正文 16px 下不换行空格约 4.4px,4 个一级 ≈ 18px,
+ * 与独立块渲染的 16px 左边距同一量级。
+ */
+const MOBILE_MARKDOWN_LIST_INDENT_SPACES = 4;
+
+/**
+ * 列表项前缀文本(缩进 + marker)。文本流渲染层与长度预算共用这一份,
+ * 保证「渲染出来的前缀」与「预算里算的长度」始终一致;复制出去也仍是
+ * 合法的 Markdown 嵌套缩进。
+ */
+export function mobileMarkdownListMarkerText(
+  block: Extract<MobileMarkdownBlock, { type: 'list_item' }>,
+): string {
+  const depth = Math.max(0, block.depth);
+  const indent = ' '.repeat(MOBILE_MARKDOWN_LIST_INDENT_SPACES * depth);
+  if (typeof block.checked === 'boolean') return `${indent}${block.checked ? '☑ ' : '☐ '}`;
+  return `${indent}${block.ordered ? `${block.marker} ` : `${mobileMarkdownUnorderedMarker(depth)} `}`;
 }
 
 export interface MobileMarkdownBlockRange {
@@ -108,6 +159,12 @@ export interface MobileMarkdownParseCheckpoint {
   lineIndex: number;
   /** Number of blocks already emitted at this boundary. */
   blockCount: number;
+  /**
+   * 列表嵌套层级栈(每项是该层列表项的缩进列数)。断点落在列表中间时,
+   * 后缀解析需要这份状态才能把续写的子项接回父级 —— 否则续写的子项会被
+   * 当成新的最外层(#8603)。
+   */
+  listStack: number[];
 }
 
 export interface MobileMarkdownParseResult {
@@ -222,6 +279,7 @@ export function parseMobileMarkdownDocument(
     charOffset,
     lineIndex: lineOffset,
     blockCount: blockIndexOffset,
+    listStack: [...(options?.listStack ?? [])],
   }];
   const lineNumber = (index: number) => lineOffset + index;
   const blockNumber = () => blockIndexOffset + blocks.length;
@@ -248,6 +306,14 @@ export function parseMobileMarkdownDocument(
   };
   let paragraph: string[] = [];
   let code: CodeFenceState | null = null;
+  // 列表嵌套层级栈:每项是「该层列表项的缩进列数」。列表项的层级由它相对
+  // 上一个列表项的缩进差决定(缩进大于父级则进一层,否则回到对应层级),
+  // 而不是把行首空格数直接除以固定宽度——后者会在「整个列表整体缩进」
+  // (代码块里的列表、引用里的列表)时把层级算错。
+  // #8603:此前缩进被整个丢弃,所有层级拍平成同一级。
+  const listStack: number[] = [...(options?.listStack ?? [])];
+  // 非列表块(标题/引用/表格/代码/公式/段落)会结束当前列表(CommonMark 语义)。
+  const endList = () => { listStack.length = 0; };
   // display math 围栏状态($$ 与 $$ 之间;与 code fence 一样跨行收集)。
   let math: { lines: string[]; start: number } | null = null;
   // 跨块 HTML 注释状态:<!-- 与 --> 之间隔空行时会被拆成多个块,后续块自身没有注释标记,
@@ -261,6 +327,9 @@ export function parseMobileMarkdownDocument(
     const text = paragraph.join('\n').trim();
     paragraph = [];
     if (!text) return;
+    // 段落结束当前列表(CommonMark:列表后的段落属于列表之外)。
+    // 空行不结束列表(列表项之间可以有空行),所以空行断点保留层级栈。
+    endList();
     let snapshot: ParagraphInlineSnapshot | undefined;
     let inlines: MobileMarkdownInline[];
     if (!paragraphStartsInComment && text.length >= 1024) {
@@ -301,6 +370,7 @@ export function parseMobileMarkdownDocument(
           charOffset: lineEndOffset(index),
           lineIndex: lineNumber(index + 1),
           blockCount: blockNumber(),
+          listStack: [],
         });
       } else {
         code.lines.push(stripCodeFenceIndent(line, code.indent));
@@ -321,6 +391,7 @@ export function parseMobileMarkdownDocument(
             charOffset: lineEndOffset(index),
             lineIndex: lineNumber(index + 1),
             blockCount: blockNumber(),
+            listStack: [],
           });
         } else {
           // 空围栏($$ 与 $$ 之间无内容):没有可渲染的公式,保持原文段落。
@@ -341,6 +412,7 @@ export function parseMobileMarkdownDocument(
     const fence = parseOpeningCodeFence(line);
     if (fence) {
       flushParagraph(index);
+      endList();
       code = {
         language: fence.language,
         lines: [],
@@ -358,6 +430,7 @@ export function parseMobileMarkdownDocument(
     const singleLineMath = mathTrimmed.match(/^\$\$(.+)\$\$$/);
     if (singleLineMath && singleLineMath[1].trim()) {
       flushParagraph(index);
+      endList();
       pushBlock(
         buildMathBlock(singleLineMath[1], index, blockNumber(), withSrc, lineOffset),
         index,
@@ -367,6 +440,7 @@ export function parseMobileMarkdownDocument(
     }
     if (mathTrimmed === '$$') {
       flushParagraph(index);
+      endList();
       math = { lines: [], start: index };
       continue;
     }
@@ -381,6 +455,8 @@ export function parseMobileMarkdownDocument(
           charOffset: lineEndOffset(index),
           lineIndex: lineNumber(index + 1),
           blockCount: blockNumber(),
+          // 空行可能只是列表项之间的分隔,层级要延续(#8603)。
+          listStack: [...listStack],
         });
       }
       continue;
@@ -392,6 +468,7 @@ export function parseMobileMarkdownDocument(
     const heading = line.match(/^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/);
     if (heading) {
       flushParagraph(index);
+      endList();
       pushBlock({
         type: 'heading',
         key: `h:${lineNumber(index)}:${blockNumber()}`,
@@ -404,6 +481,7 @@ export function parseMobileMarkdownDocument(
 
     if (/^\s*>\s?/.test(line)) {
       flushParagraph(index);
+      endList();
       const quoteStart = index;
       const quoteLines: string[] = [];
       while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
@@ -424,6 +502,7 @@ export function parseMobileMarkdownDocument(
     const table = parseTableBlock(lines, index);
     if (table) {
       flushParagraph(index);
+      endList();
       const tableStart = index;
       // 注释状态按行推进:注释可能在表格中途开启/闭合(如某行含 <!--、后续行才有 -->),
       // 每个数据行的单元格用该行行首的注释状态解析,不再沿用表头行状态近似(review 实捉)。
@@ -463,12 +542,21 @@ export function parseMobileMarkdownDocument(
       flushParagraph(index);
       const marker = list[2];
       const task = list[3].match(/^\[([ xX])\]\s+(.+)$/);
+      const indentColumns = mobileMarkdownIndentColumns(list[1] ?? '');
+      // 层级按「相对上一个列表项的缩进」推进:缩进大于栈顶则进一层,
+      // 否则回退到第一个不大于当前缩进的层级。整个列表整体缩进(例如
+      // 列表嵌在引用里)不会因此被算成更深的一层。
+      while (listStack.length > 0 && listStack[listStack.length - 1] >= indentColumns) {
+        listStack.pop();
+      }
+      listStack.push(indentColumns);
       pushBlock({
         type: 'list_item',
         key: `li:${lineNumber(index)}:${blockNumber()}`,
         ...(withSrc ? { srcLine: lineNumber(index) } : {}),
         ordered: /^\d/.test(marker),
         marker,
+        depth: listStack.length - 1,
         checked: task ? task[1].toLowerCase() === 'x' : undefined,
         inlines: parseMobileMarkdownInlines(task ? task[2] : list[3], lineStartsInComment),
       }, index, index + 1);
@@ -578,6 +666,8 @@ export function parseMobileMarkdownIncremental(
       blockIndexOffset: checkpoint.blockCount,
       charOffset: suffixCharOffset,
       previous,
+      // 断点可能落在列表中间:把当时的层级栈带过去,续写的子项才能接回父级。
+      listStack: checkpoint.listStack,
     },
   );
 
@@ -959,11 +1049,6 @@ function splitOversizedTextRunBlock(
 function mobileMarkdownTextRunBlockPrefixLength(block: MobileMarkdownTextRunBlock): number {
   if (block.type !== 'list_item' || block.textRunContinuation) return 0;
   return mobileMarkdownListMarkerText(block).length;
-}
-
-function mobileMarkdownListMarkerText(block: Extract<MobileMarkdownTextRunBlock, { type: 'list_item' }>): string {
-  if (typeof block.checked === 'boolean') return block.checked ? '☑ ' : '☐ ';
-  return block.ordered ? `${block.marker} ` : '• ';
 }
 
 function cloneTextRunBlockChunk(

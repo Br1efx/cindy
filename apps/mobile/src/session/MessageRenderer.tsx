@@ -245,6 +245,8 @@ import {
   mobileMarkdownImageTitle,
   mobileMarkdownImageUrlForWorkdir,
   mobileMarkdownInlineImageSize,
+  mobileMarkdownListMarkerText,
+  mobileMarkdownUnorderedMarker,
   parseMobileMarkdownIncremental,
   parseMobileMarkdownInlines,
   type MobileMarkdownParseResult,
@@ -6239,11 +6241,12 @@ function MarkdownBodyBase({
       ? [styles.markdownHeading, headingSizeStyle(styles, block.level)]
       : styles.messageText;
     if (block.type === 'list_item' && !('textRunContinuation' in block && block.textRunContinuation)) {
-      const task = typeof block.checked === 'boolean';
+      // #8603:层级既缩进也换符号(第 1 层 •、第 2 层 ◦、第 3 层 ▪)。
+      // 前缀文本(含缩进)与长度预算共用 mobileMarkdownListMarkerText 一份,
+      // 避免「渲染的前缀」与「预算里的长度」两处各写一遍。
       spans.push(
         <RunSpan key={`${block.key}:marker`} style={[styles.messageText, styles.markdownListMarkerInline]}>
-          {task ? block.checked ? '☑ ' : '☐ '
-              : block.ordered ? `${block.marker} ` : '• '}
+          {mobileMarkdownListMarkerText(block)}
         </RunSpan>,
       );
     }
@@ -6376,10 +6379,16 @@ function MarkdownBodyBase({
     }
     if (block.type === 'list_item') {
       const task = typeof block.checked === 'boolean';
+      // #8603:嵌套层级靠左边距表达,项目符号按层级换(• → ◦ → ▪)。
+      const depth = Math.max(0, block.depth);
       return (
         <View
           key={block.key}
-          style={[styles.markdownListRow, { gap: layout.markdownListGap }]}
+          style={[
+            styles.markdownListRow,
+            { gap: layout.markdownListGap },
+            depth > 0 && { marginLeft: depth * layout.markdownListIndentWidth },
+          ]}
           testID={task ? 'message.markdownTaskItem' : undefined}
         >
           <Text style={[
@@ -6388,7 +6397,7 @@ function MarkdownBodyBase({
             task && styles.markdownTaskMarker,
           ]}>
             {task ? block.checked ? '✓' : ''
-                : block.ordered ? block.marker : '•'}
+                : block.ordered ? block.marker : mobileMarkdownUnorderedMarker(depth)}
           </Text>
           <MarkdownSelectableText
             allowIosUITextView={singleBlockAllowsIosUITextView}

@@ -10,6 +10,8 @@ import {
   mobileMarkdownImageAltChipText,
   MOBILE_MARKDOWN_IMAGE_ALT_CHIP_MAX_UTF16_LENGTH,
   mobileMarkdownInlineImageSize,
+  mobileMarkdownListMarkerText,
+  mobileMarkdownUnorderedMarker,
   parseMobileMarkdown,
   parseMobileMarkdownDocument,
   parseMobileMarkdownIncremental,
@@ -198,6 +200,7 @@ describe('messageMarkdown', () => {
         key: 'li:3:1',
         ordered: false,
         marker: '-',
+        depth: 0,
         inlines: [{ type: 'text', text: 'first item' }],
       },
       {
@@ -205,6 +208,7 @@ describe('messageMarkdown', () => {
         key: 'li:4:2',
         ordered: true,
         marker: '2.',
+        depth: 0,
         inlines: [{ type: 'text', text: 'second item' }],
       },
       {
@@ -271,6 +275,7 @@ describe('messageMarkdown', () => {
         key: 'li:0:0',
         ordered: true,
         marker: '1.',
+        depth: 0,
         inlines: [{ type: 'text', text: 'Windows 更新缓存（620MB）- 管理员 PowerShell 跑这条:' }],
       },
       {
@@ -375,6 +380,7 @@ describe('messageMarkdown', () => {
         key: 'li:5:2',
         ordered: false,
         marker: '-',
+        depth: 0,
         checked: true,
         inlines: [{ type: 'text', text: 'Preserve message order' }],
       },
@@ -383,10 +389,86 @@ describe('messageMarkdown', () => {
         key: 'li:6:3',
         ordered: false,
         marker: '-',
+        depth: 0,
         checked: false,
         inlines: [{ type: 'text', text: 'Verify native screenshots' }],
       },
     ]);
+  });
+
+  // #8603:嵌套列表层级此前被整个丢弃,所有层级都拍平成同一级。
+  it('records the nesting level of nested unordered list items', () => {
+    const blocks = parseMobileMarkdown([
+      '- 第一层:甲',
+      '  - 第二层:乙',
+      '    - 第三层:丙',
+      '  - 第二层:丁',
+      '- 第一层:戊',
+    ].join('\n'));
+    expect(blocks.map((block) => (
+      block.type === 'list_item'
+        ? [block.depth, block.inlines[0].type === 'text' ? block.inlines[0].text : '']
+        : null
+    ))).toEqual([
+      [0, '第一层:甲'],
+      [1, '第二层:乙'],
+      [2, '第三层:丙'],
+      [1, '第二层:丁'],
+      [0, '第一层:戊'],
+    ]);
+  });
+
+  it('records the nesting level of nested ordered list items', () => {
+    const blocks = parseMobileMarkdown([
+      '1. 外层',
+      '   1. 内层',
+      '      1. 深层',
+    ].join('\n'));
+    expect(blocks.map((block) => (
+      block.type === 'list_item' ? block.depth : null
+    ))).toEqual([0, 1, 2]);
+  });
+
+  it('keeps a list that is uniformly indented at the top level', () => {
+    // 整个列表被缩进(例如嵌在引用里)时,层级不应被算深:
+    // 层级看的是「相对上一个列表项的缩进差」,不是行首空格总数。
+    const blocks = parseMobileMarkdown([
+      '  - 甲',
+      '  - 乙',
+    ].join('\n'));
+    expect(blocks.map((block) => (
+      block.type === 'list_item' ? block.depth : null
+    ))).toEqual([0, 0]);
+  });
+
+  it('keeps the nesting level when a nested list is parsed incrementally', () => {
+    // 流式追加时,断点可能落在列表中间。增量解析必须带上当时的层级栈,
+    // 否则续写的子项会被当成新的最外层(#8603)。
+    const first = parseMobileMarkdownDocument('- 甲\n  - 乙\n\n');
+    const next = parseMobileMarkdownIncremental('- 甲\n  - 乙\n\n  - 丙', first);
+    expect(next.incremental).toBe(true);
+    expect(next.blocks.map((block) => (
+      block.type === 'list_item' ? block.depth : null
+    ))).toEqual([0, 1, 1]);
+    expect(next.blocks).toEqual(parseMobileMarkdownDocument('- 甲\n  - 乙\n\n  - 丙').blocks);
+  });
+
+  it('marks nested items with a different bullet per level', () => {
+    // 无序列表按层级换符号(第 1 层 •、第 2 层 ◦、第 3 层 ▪)。
+    expect(mobileMarkdownUnorderedMarker(0)).toBe('•');
+    expect(mobileMarkdownUnorderedMarker(1)).toBe('◦');
+    expect(mobileMarkdownUnorderedMarker(2)).toBe('▪');
+  });
+
+  it('indents the list marker text by the nesting level', () => {
+    // 文本流渲染层与长度预算共用同一份前缀文本,缩进宽度必须一致。
+    const blocks = parseMobileMarkdown([
+      '- 甲',
+      '  - 乙',
+    ].join('\n'));
+    expect(blocks.map((block) => (
+      block.type === 'list_item' ? mobileMarkdownListMarkerText(block) : null
+    ))).toEqual(['• ', '\u00a0\u00a0\u00a0\u00a0◦ ']);
   });
 
   it('splits http links into inline tokens', () => {

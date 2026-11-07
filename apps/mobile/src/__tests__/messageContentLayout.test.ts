@@ -19,6 +19,7 @@ describe('messageContentLayout', () => {
       imagePreviewWidth: 137,
       markdownBodyGap: 12,
       markdownListGap: 6,
+      markdownListIndentWidth: 14,
       markdownListMarkerWidth: 20,
       markdownTableAvailableWidth: 280,
       markdownTableCellMinWidth: 96,

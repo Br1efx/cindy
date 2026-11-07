@@ -19,6 +19,7 @@ export interface MessageContentLayout {
   imagePreviewWidth: number;
   markdownBodyGap: number;
   markdownListGap: number;
+  markdownListIndentWidth: number;
   markdownListMarkerWidth: number;
   markdownTableAvailableWidth: number;
   markdownTableCellMinWidth: number;
@@ -59,6 +60,8 @@ export function buildMessageContentLayout(input: MessageContentLayoutInput): Mes
     imagePreviewWidth,
     markdownBodyGap: compact ? 12 : 14,
     markdownListGap: compact ? 6 : 8,
+    // 嵌套列表每级的左边距(与桌面端每级 24px 递进的观感接近)。
+    markdownListIndentWidth: compact ? 14 : 16,
     markdownListMarkerWidth: compact ? 20 : 24,
     markdownTableAvailableWidth: contentWidth,
     markdownTableCellMinWidth: compact ? 96 : 112,

@@ -4,7 +4,7 @@
 import { botGroupBodyParts } from '@cindy/maker-shared/botGroupPresentation';
 import type { BotGroupAuthorKind } from '@cindy/maker-shared/botGroupChat';
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Linking, Pressable, Platform, ScrollView, StyleSheet, View, useWindowDimensions, type GestureResponderEvent, type LayoutChangeEvent, type StyleProp, type TextStyle } from 'react-native';
+import { Linking, Pressable, Platform, ScrollView, StyleSheet, View, useWindowDimensions, type GestureResponderEvent, type LayoutChangeEvent, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { latexToUnicodeApproximation } from '@cindy/maker-shared/math-markdown';
 import { HighlightedCodeText } from './HighlightedCodeText';
@@ -16,7 +16,7 @@ import { Text } from '@/components/AppText';
 import { MarkdownSelectableText, MarkdownSelectableSpan } from './MarkdownSelectableText';
 import { fontWeight, monoFont, useThemedStyles, type ThemeColors } from '@/theme';
 import { lineHeight, radius, spacing, typeScale } from '@/theme/tokens';
-import { parseMobileMarkdown, type MobileMarkdownBlock, type MobileMarkdownInline } from './messageMarkdown';
+import { mobileMarkdownUnorderedMarker, parseMobileMarkdown, type MobileMarkdownBlock, type MobileMarkdownInline } from './messageMarkdown';
 import { buildMessageContentLayout } from './messageContentLayout';
 import { buildMobileMarkdownTableColumnWidths } from './messageTableLayout';
 import { botGroupMentionMember, type BotGroupMentionContext, type BotGroupMentionPoint } from './botGroupMentions';
@@ -149,6 +149,14 @@ function BotGroupMarkdownTable({ block, styles, options, context }: {
   </ScrollView>;
 }
 
+/** 嵌套列表每级的左边距(与消息流 renderSingleBlock 同一档)。 */
+const LIST_INDENT_PX = 16;
+
+function listIndentStyle(depth: number): ViewStyle | null {
+  const levels = Math.max(0, depth);
+  return levels > 0 ? { marginLeft: levels * LIST_INDENT_PX } : null;
+}
+
 function renderBlock(block: MobileMarkdownBlock, styles: Styles, options: BodyOptions, diagramLabel: string, context?: BotGroupMentionContext): ReactNode {
   switch (block.type) {
     case 'heading':
@@ -158,8 +166,9 @@ function renderBlock(block: MobileMarkdownBlock, styles: Styles, options: BodyOp
         <MarkdownSelectableText selectable style={[styles.text, styles.quoteText]}>{renderInlines(block.inlines, styles, options, context)}</MarkdownSelectableText>
       </View>;
     case 'list_item':
-      return <View key={block.key} style={styles.listItem}>
-        <Text style={styles.text}>{block.checked === undefined ? (block.ordered ? block.marker : '•') : block.checked ? '☑' : '☐'}</Text>
+      // #8603:嵌套层级靠左边距表达,项目符号按层级换(• → ◦ → ▪)。
+      return <View key={block.key} style={[styles.listItem, listIndentStyle(block.depth)]}>
+        <Text style={styles.text}>{block.checked === undefined ? (block.ordered ? block.marker : mobileMarkdownUnorderedMarker(block.depth)) : block.checked ? '☑' : '☐'}</Text>
         <MarkdownSelectableText selectable style={[styles.text, styles.listText]}>{renderInlines(block.inlines, styles, options, context)}</MarkdownSelectableText>
       </View>;
     case 'code':

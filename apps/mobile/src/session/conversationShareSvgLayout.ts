@@ -14,6 +14,7 @@ import {
 } from "@/session/conversationShareRichSvg";
 import {
   mobileMarkdownInlineHasMark,
+  mobileMarkdownUnorderedMarker,
   parseMobileMarkdown,
   type MobileMarkdownBlock,
   type MobileMarkdownInline,
@@ -425,13 +426,17 @@ function markdownBlockParts(
             ? "[x]"
             : "[ ]"
           : null;
+      // #8603:嵌套层级在纯文本分享里靠缩进表达,项目符号按层级换(• → ◦ → ▪)。
+      const depth = Math.max(0, block.depth);
       const marker = taskMarker
         ? block.ordered
           ? `${block.marker} ${taskMarker}`
           : taskMarker
-        : block.marker;
+        : block.ordered
+          ? block.marker
+          : mobileMarkdownUnorderedMarker(depth);
       return [
-        { text: `${marker} ` },
+        { text: `${"  ".repeat(depth)}${marker} ` },
         ...markdownInlineParts(block.inlines, images),
       ];
     }

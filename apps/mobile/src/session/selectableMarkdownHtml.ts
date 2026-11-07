@@ -1,5 +1,6 @@
 import {
   isMobileMarkdownImageDirectUrl,
+  mobileMarkdownUnorderedMarker,
   parseMobileMarkdown,
   type MobileMarkdownBlock,
   type MobileMarkdownInline,
@@ -59,6 +60,9 @@ export interface SelectableMarkdownHtmlOptions {
 }
 
 /** renderBlocks/renderInline 的渲染上下文(目前只有会话 chip 标题 map)。 */
+/** 嵌套列表每级的左边距(与消息流 renderSingleBlock 同一档)。 */
+const LIST_INDENT_PX = 16;
+
 interface RenderContext {
   imageSources?: SelectableMarkdownHtmlOptions['imageSources'];
   sessionLinkTitles?: Readonly<Record<string, string>>;
@@ -459,9 +463,11 @@ function renderBlock(block: MobileMarkdownBlock, ctx: RenderContext): string {
     case 'blockquote':
       return `<blockquote>${renderInlines(block.inlines, ctx)}</blockquote>`;
     case 'list_item': {
-      const marker = block.checked === true ? '✓' : block.checked === false ? '□' : block.ordered ? block.marker : '•';
+      // #8603:嵌套层级靠左边距表达,项目符号按层级换(• → ◦ → ▪)。
+      const depth = Math.max(0, block.depth);
+      const marker = block.checked === true ? '✓' : block.checked === false ? '□' : block.ordered ? block.marker : mobileMarkdownUnorderedMarker(depth);
       return [
-        '<div class="list-row">',
+        `<div class="list-row"${depth > 0 ? ` style="margin-left:${depth * LIST_INDENT_PX}px"` : ''}>`,
         `<span class="list-marker">${escapeHtml(marker)}</span>`,
         `<span class="list-text">${renderInlines(block.inlines, ctx)}</span>`,
         '</div>',
